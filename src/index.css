@@ -1,0 +1,194 @@
+/* ============================================================
+   MÓDULO 1 — Design Tokens
+   Centraliza todas as variáveis visuais.
+   Dark theme por padrão; .light sobrescreve.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Dark theme (default) ──────────────────────────────────── */
+:root,
+.dark {
+  --bg-primary:   #0b0d18;
+  --bg-secondary: #0f1120;
+  --bg-card:      #141726;
+  --bg-card2:     #1a1e30;
+  --bg-modal:     #111422;
+
+  --border-subtle:  rgba(51, 60, 96, 0.6);
+  --border-default: rgba(51, 60, 96, 0.9);
+  --border-strong:  rgba(71, 82, 122, 1);
+
+  --accent:       #f5a623;
+  --accent-hover: #e6961b;
+  --accent-muted: rgba(245, 166, 35, 0.12);
+
+  --text-primary:   #e2e8f0;
+  --text-secondary: #94a8bf;
+  --text-tertiary:  #4e5f7a;
+
+  --success:  #22d3a0;
+  --danger:   #f06b6b;
+  --info:     #5b8dee;
+  --warning:  #fb923c;
+
+  --shadow-card:  0 1px 3px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+  --shadow-modal: 0 24px 64px rgba(0,0,0,.6);
+
+  --chart-grid: rgba(45, 52, 84, 0.8);
+  --chart-tick: #3d4a68;
+  --chart-label:#7e8fa8;
+}
+
+/* ── Light theme ───────────────────────────────────────────── */
+.light {
+  --bg-primary:   #f0f2f7;
+  --bg-secondary: #ffffff;
+  --bg-card:      #ffffff;
+  --bg-card2:     #f8f9fc;
+  --bg-modal:     #ffffff;
+
+  --border-subtle:  rgba(200, 210, 228, 0.5);
+  --border-default: rgba(200, 210, 228, 0.9);
+  --border-strong:  rgba(170, 184, 210, 1);
+
+  --accent:       #d4860f;
+  --accent-hover: #b87209;
+  --accent-muted: rgba(212, 134, 15, 0.1);
+
+  --text-primary:   #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary:  #9ca3af;
+
+  --success:  #0fa876;
+  --danger:   #d94f4f;
+  --info:     #3d6fd4;
+  --warning:  #d4711c;
+
+  --shadow-card:  0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,.15);
+
+  --chart-grid: rgba(200, 210, 228, 0.7);
+  --chart-tick: #9ca3af;
+  --chart-label:#6b7280;
+}
+
+/* ── Base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background .2s, color .2s;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar              { width: 5px; height: 5px; }
+::-webkit-scrollbar-track        { background: transparent; }
+::-webkit-scrollbar-thumb        { background: var(--border-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover  { background: var(--border-strong); }
+
+/* ── Mono numbers ─────────────────────────────────────────── */
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+/* ── Card ─────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  transition: border-color .18s, box-shadow .18s;
+}
+.card:hover {
+  border-color: var(--border-default);
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
+}
+
+/* ── Input / Select shared ────────────────────────────────── */
+.input, .select-field {
+  background: var(--bg-card2);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.input:focus, .select-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+/* ── Recharts overrides ───────────────────────────────────── */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--chart-grid) !important;
+}
+.recharts-text.recharts-cartesian-axis-tick-value {
+  fill: var(--chart-label) !important;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.recharts-tooltip-wrapper { outline: none !important; }
+
+/* ── Animations ────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes countUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in    { animation: fadeIn .3s ease forwards; }
+.animate-slide-in   { animation: slideInRight .25s ease forwards; }
+.animate-count-up   { animation: countUp .4s cubic-bezier(.34,1.56,.64,1) forwards; }
+
+/* ── Stagger helpers ──────────────────────────────────────── */
+.stagger > *:nth-child(1) { animation-delay: .05s; }
+.stagger > *:nth-child(2) { animation-delay: .10s; }
+.stagger > *:nth-child(3) { animation-delay: .15s; }
+.stagger > *:nth-child(4) { animation-delay: .20s; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Responsive adjustments ───────────────────────────────── */
+@media (max-width: 1024px) {
+  .kpi-grid, [style*="grid-template-columns: repeat(4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  main[style] {
+    padding: .75rem !important;
+  }
+  /* Stack 2-col grids to 1 col */
+  [style*="grid-template-columns: minmax(0,1fr) minmax(0,1.6fr)"],
+  [style*="grid-template-columns: 1fr 1fr"],
+  [style*="grid-template-columns: repeat(2"] {
+    grid-template-columns: 1fr !important;
+  }
+}
