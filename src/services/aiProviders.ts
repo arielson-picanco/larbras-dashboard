@@ -19,7 +19,6 @@ export const PROVIDERS: ProviderConfig[] = [
 ]
 
 const USE_API = import.meta.env.VITE_USE_API === 'true'
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 
 function getToken(): string {
   return localStorage.getItem('larbras_token') ?? ''
@@ -122,7 +121,7 @@ async function callViaBackend(provider: AIProvider, prompt: string): Promise<str
 
   if (provider === 'claude') {
     body = { model: 'claude-sonnet-4-20250514', max_tokens: 1800, messages: [{ role: 'user', content: prompt }] }
-    res  = await fetch(`${API_URL}/api/ai/claude`, { method: 'POST', headers, body: JSON.stringify(body) })
+    res  = await fetch(`/api/ai/claude`, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
     const d = await res.json()
     return d.content?.find((b: { type: string }) => b.type === 'text')?.text ?? ''
@@ -134,7 +133,7 @@ async function callViaBackend(provider: AIProvider, prompt: string): Promise<str
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { maxOutputTokens: 2048, temperature: 0.2 },
     }
-    res  = await fetch(`${API_URL}/api/ai/gemini`, { method: 'POST', headers, body: JSON.stringify(body) })
+    res  = await fetch(`/api/ai/gemini`, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
     const d = await res.json()
     return d.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
@@ -148,7 +147,7 @@ async function callViaBackend(provider: AIProvider, prompt: string): Promise<str
         { role: 'user',   content: prompt },
       ],
     }
-    res  = await fetch(`${API_URL}/api/ai/groq`, { method: 'POST', headers, body: JSON.stringify(body) })
+    res  = await fetch(`/api/ai/groq`, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
     const d = await res.json()
     return d.choices?.[0]?.message?.content ?? ''

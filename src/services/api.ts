@@ -8,17 +8,16 @@ import type { SaleRow, FilterState, Paginated, TableColumn } from '@/types'
 import { applyFilters } from './filters'
 
 const USE_API = import.meta.env.VITE_USE_API === 'true'
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 
 // ── Token JWT (lido do localStorage) ─────────────────────────────────────────
 function getToken(): string {
   return localStorage.getItem('larbras_token') ?? ''
 }
 
-// ── Fetch autenticado ─────────────────────────────────────────────────────────
+// ── Fetch autenticado — URL relativa passa pelo proxy Vite ────────────────────
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
-  const res   = await fetch(`${API_URL}/api${path}`, {
+  const res   = await fetch(`/api${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -97,7 +96,7 @@ export async function uploadFile(file: File, mode: 'replace' | 'append' = 'appen
   const formData = new FormData()
   formData.append('file', file)
 
-  const res = await fetch(`${API_URL}/api/sales/upload?mode=${mode}`, {
+  const res = await fetch(`/api/sales/upload?mode=${mode}`, {
     method:  'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body:    formData,

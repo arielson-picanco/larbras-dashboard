@@ -20,7 +20,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
+// Usa URL relativa (/api) para passar pelo proxy do Vite em dev
+// e funcionar no mesmo domínio em produção — sem CORS
+const API_BASE = '/api'
 const TOKEN_KEY = 'larbras_token'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -40,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function verifyToken(t: string) {
     try {
-      const res = await fetch(`${API_URL}/api/auth/me`, {
+      const res = await fetch(`${API_BASE}/auth/me`, {
         headers: { Authorization: `Bearer ${t}` },
       })
       if (!res.ok) throw new Error('Token inválido')
@@ -55,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function login(email: string, password: string) {
-    const res = await fetch(`${API_URL}/api/auth/login`, {
+    const res = await fetch(`${API_BASE}/auth/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ email, password }),

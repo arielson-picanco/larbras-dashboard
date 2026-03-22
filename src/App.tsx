@@ -52,10 +52,10 @@ export default function App() {
     if (USE_API) return  // em modo API, dados chegam via fetchSalesData no store
 
     // Modo local (desenvolvimento): carrega do IndexedDB
-    const { loadRows } = require('@/services/db')
     setLoading(true)
-    loadRows()
-      .then((rows: never[]) => { if (rows.length) setAllRows(rows) })
+    import('@/services/db')
+      .then(({ loadRows }) => loadRows())
+      .then((rows) => { if (rows.length) setAllRows(rows) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
