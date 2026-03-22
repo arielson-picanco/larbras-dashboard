@@ -19,7 +19,7 @@ const app = express()
 app.use(cors({
   origin:      config.nodeEnv === 'production'
     ? process.env.FRONTEND_URL  // ex: https://larbras.vercel.app
-    : ['http://localhost:5173', 'http://localhost:3000'],
+    : ['http://localhost:3001', 'http://localhost:3000'],
   credentials: true,
 }))
 
