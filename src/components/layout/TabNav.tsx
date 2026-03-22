@@ -1,26 +1,34 @@
 // ============================================================
-// MÓDULO 3 — Navegação por abas
+// MÓDULO 3 — Navegação por abas (com controle de acesso por role)
 // ============================================================
 
 import { Sparkles, Users, Package, Tag } from 'lucide-react'
 import { useDashboardStore } from '@/store/useDashboardStore'
+import { useAuth }           from '@/contexts/AuthContext'
 
-const TABS = [
-  { id: 'overview',         label: 'Visão Geral' },
-  { id: 'products',         label: 'Produtos' },
-  { id: 'sellers',          label: 'Vendedores' },
-  { id: 'comparison',       label: 'Comparar Vendedores', accent: true },
-  { id: 'productComparison',label: 'Comparar Produtos',   accent: true },
-  { id: 'markup',           label: 'Markup / Preços' },
-  { id: 'feirao',           label: 'Feirão', accent: true },
-  { id: 'clients',          label: 'Clientes' },
-  { id: 'heatmap',          label: 'Mapa de Calor' },
-  { id: 'insights',         label: 'Insights IA', accent: true },
-  { id: 'table',            label: 'Dados Detalhados' },
+// Abas com roles permitidos ('*' = qualquer autenticado)
+const ALL_TABS = [
+  { id: 'overview',          label: 'Visão Geral',           roles: ['admin'] },
+  { id: 'products',          label: 'Produtos',              roles: ['admin', 'gerente', 'marketing'] },
+  { id: 'sellers',           label: 'Vendedores',            roles: ['admin', 'gerente', 'marketing'] },
+  { id: 'comparison',        label: 'Comparar Vendedores',   roles: ['admin', 'gerente', 'marketing'], accent: true },
+  { id: 'productComparison', label: 'Comparar Produtos',     roles: ['admin', 'gerente', 'marketing'], accent: true },
+  { id: 'markup',            label: 'Markup / Preços',       roles: ['admin'] },
+  { id: 'feirao',            label: 'Feirão',                roles: ['admin'], accent: true },
+  { id: 'clients',           label: 'Clientes',              roles: ['admin', 'gerente', 'marketing'] },
+  { id: 'heatmap',           label: 'Mapa de Calor',         roles: ['admin', 'gerente', 'marketing'] },
+  { id: 'insights',          label: 'Insights IA',           roles: ['admin', 'gerente', 'marketing'], accent: true },
+  { id: 'table',             label: 'Dados Detalhados',      roles: ['admin'] },
 ]
 
 export function TabNav() {
   const { activeTab, setActiveTab } = useDashboardStore()
+  const { user } = useAuth()
+
+  // Filtra abas pelo role do usuário logado
+  const tabs = ALL_TABS.filter(tab =>
+    user && tab.roles.includes(user.role)
+  )
 
   return (
     <nav
@@ -36,11 +44,9 @@ export function TabNav() {
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = activeTab === tab.id
-        const color  = active
-          ? (tab.accent ? 'var(--accent)' : 'var(--accent)')
-          : 'var(--text-secondary)'
+        const color  = active ? 'var(--accent)' : 'var(--text-secondary)'
 
         return (
           <button

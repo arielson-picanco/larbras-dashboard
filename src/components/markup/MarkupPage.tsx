@@ -66,10 +66,20 @@ function calcMarkup(custo: number, despesasPct: number, lucroPct: number): {
   return { precoVenda: pv, markup, margem, markupDivisor: divisor }
 }
 
-function calcMargemStatus(margem: number, lucroPct: number): PricingItem['margemStatus'] {
-  if (margem < 0)             return 'prejuizo'
-  if (margem < lucroPct * 0.5) return 'baixo'
-  if (margem >= lucroPct * 1.2) return 'alto'
+// Status para margem SUGERIDA (base = lucroDesejado pois fórmula já embute despesas)
+// A margem sugerida = despesas% + lucroDesejado%, então o "ok" é quando está próxima ao lucro meta
+function calcMargemStatusSugerida(margemLiquida: number, lucroPct: number): PricingItem['margemStatus'] {
+  if (margemLiquida < 0)              return 'prejuizo'
+  if (margemLiquida < lucroPct * 0.9) return 'baixo'   // mais de 10% abaixo da meta
+  if (margemLiquida > lucroPct * 1.1) return 'alto'    // mais de 10% acima da meta
+  return 'ok'
+}
+
+// Status para margem PRATICADA (base = margem líquida real após descontar todas as despesas)
+function calcMargemStatusPraticada(margemLiquida: number, lucroPct: number): PricingItem['margemStatus'] {
+  if (margemLiquida < 0)              return 'prejuizo'
+  if (margemLiquida < lucroPct * 0.5) return 'baixo'
+  if (margemLiquida >= lucroPct * 1.2) return 'alto'
   return 'ok'
 }
 
@@ -474,11 +484,18 @@ function PricingTable({
                       {item.custo > 0 ? item.markup.toFixed(2)+'%' : '—'}
                     </span>
                   </td>
-                  {/* Margem Sugerida */}
+                  {/* Margem Sugerida: mostra margem líquida = despesas% + lucroDesejado% */}
                   <td style={{ padding:'7px 12px', textAlign:'right', fontFamily:"'IBM Plex Mono'", fontSize:11 }}>
-                    <span style={{ color: item.custo > 0 ? st.color : 'var(--text-tertiary)', fontWeight:700 }}>
-                      {item.custo > 0 ? item.margem.toFixed(2)+'%' : '—'}
-                    </span>
+                    <div>
+                      <span style={{ color: item.custo > 0 ? st.color : 'var(--text-tertiary)', fontWeight:700 }}>
+                        {item.custo > 0 ? item.margem.toFixed(2)+'%' : '—'}
+                      </span>
+                      {item.custo > 0 && (
+                        <div style={{ fontSize:8, color:'var(--text-tertiary)', marginTop:1, whiteSpace:'nowrap' }}>
+                          lucro: {config.lucroDesejado.toFixed(1)}%
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {/* Margem Praticada: margem REAL ao preco que esta sendo vendido */}
                   <td style={{ padding:'7px 12px', textAlign:'right' }}>
@@ -568,7 +585,7 @@ function MarginChart({ items, config }: { items: PricingItem[]; config: GlobalCo
 
 // ── Product Adder from sales data ─────────────────────────────────────────────
 function ProductAdder({ onAdd, existingIds }: {
-  onAdd:       (items: Omit<PricingItem, 'markup'|'margem'|'custoTotal'|'margemStatus'|'precoSugerido'>[]) => void
+  onAdd:       (items: Omit<PricingItem, 'markup'|'margem'|'custoTotal'|'margemStatus'|'statusPraticado'|'margemPraticada'|'abaixoDoCusto'|'precoSugerido'>[]) => void
   existingIds: Set<string>
 }) {
   const { derived } = useDashboardStore()
@@ -630,7 +647,7 @@ function ProductAdder({ onAdd, existingIds }: {
 }
 
 // ── Manual add ────────────────────────────────────────────────────────────────
-function ManualAdd({ onAdd }: { onAdd: (item: Omit<PricingItem,'markup'|'margem'|'custoTotal'|'margemStatus'|'precoSugerido'>) => void }) {
+function ManualAdd({ onAdd }: { onAdd: (item: Omit<PricingItem,'markup'|'margem'|'custoTotal'|'margemStatus'|'statusPraticado'|'margemPraticada'|'abaixoDoCusto'|'precoSugerido'>) => void }) {
   const [nome,   setNome]   = useState('')
   const [custo,  setCusto]  = useState(0)
   const [preco,  setPreco]  = useState(0)
@@ -686,9 +703,11 @@ export function MarkupPage() {
   const recalcItem = useCallback((raw: { id:string; produto:string; custo:number; precoVenda:number }): PricingItem => {
     const result = calcMarkup(raw.custo, totalDesp, config.lucroDesejado)
 
-    // Margem real: baseada no preço PRATICADO vs custo real
+    // FIX 1 & 2: margemPraticada = margem LÍQUIDA (desconta despesas% sobre o PV praticado)
+    // Fórmula: ((PV − custo) / PV × 100) − despesas%
+    // Representa o lucro real em % sobre o preço de venda, após pagar todas as despesas
     const margemPraticada = (raw.custo > 0 && raw.precoVenda > 0)
-      ? ((raw.precoVenda - raw.custo) / raw.precoVenda) * 100
+      ? ((raw.precoVenda - raw.custo) / raw.precoVenda) * 100 - totalDesp
       : 0
     const abaixoDoCusto = raw.custo > 0 && raw.precoVenda > 0 && raw.precoVenda < raw.custo
 
@@ -698,14 +717,19 @@ export function MarkupPage() {
       lucroDesejado:   config.lucroDesejado,
       precoSugerido:   result.precoVenda,
       markup:          result.markup,
+      // result.margem = despesas% + lucroDesejado% (margem líquida do preço sugerido)
       margem:          result.margem,
       margemPraticada,
       abaixoDoCusto,
-      custoTotal:      raw.custo + raw.custo * (totalDesp / 100),
-      margemStatus:    calcMargemStatus(result.margem, config.lucroDesejado),
+      // custoTotal: custo + despesas em R$ baseadas no preço sugerido (base correta = PV)
+      custoTotal:      raw.custo + (result.precoVenda > 0 ? result.precoVenda * (totalDesp / 100) : 0),
+      // FIX 3: margemStatus usa função específica para margem sugerida
+      // result.margem = despesas% + lucro%, então lucro real = result.margem - totalDesp
+      margemStatus:    calcMargemStatusSugerida(result.margem - totalDesp, config.lucroDesejado),
+      // statusPraticado usa margem líquida real (já corrigida acima)
       statusPraticado: abaixoDoCusto
         ? 'prejuizo'
-        : calcMargemStatus(margemPraticada, config.lucroDesejado),
+        : calcMargemStatusPraticada(margemPraticada, config.lucroDesejado),
     }
   }, [totalDesp, config.lucroDesejado])
 
@@ -713,7 +737,7 @@ export function MarkupPage() {
     setItems((prev) => prev.map((item) => recalcItem(item)))
   }, [recalcItem])
 
-  const addItems = (raw: Omit<PricingItem,'markup'|'margem'|'custoTotal'|'margemStatus'|'precoSugerido'>[]) => {
+  const addItems = (raw: Omit<PricingItem,'markup'|'margem'|'custoTotal'|'margemStatus'|'statusPraticado'|'margemPraticada'|'abaixoDoCusto'|'precoSugerido'>[]) => {
     setItems((prev) => {
       const existingIds = new Set(prev.map((i) => i.id))
       const newItems    = raw.filter((r) => !existingIds.has(r.id)).map(recalcItem)

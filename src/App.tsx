@@ -1,10 +1,11 @@
 // ============================================================
-// App.tsx — raiz da aplicação
+// App.tsx — raiz da aplicação (com autenticação e roles)
 // ============================================================
 
 import { useEffect } from 'react'
 import { useDashboardStore } from '@/store/useDashboardStore'
-import { loadRows }          from '@/services/db'
+import { useAuth }           from '@/contexts/AuthContext'
+import { LoginPage }         from '@/pages/LoginPage'
 import { Header }            from '@/components/layout/Header'
 import { TabNav }            from '@/components/layout/TabNav'
 import { FilterBar }         from '@/components/filters/FilterBar'
@@ -19,43 +20,94 @@ import {
   OverviewPage, ProductsPage, SellersPage, ClientsPage, TablePage,
 } from '@/pages'
 
-export default function App() {
-  const { theme, activeTab, setAllRows, setLoading } = useDashboardStore()
+// Abas que pertencem a cada role (só a primeira aba disponível abre por padrão)
+const DEFAULT_TAB: Record<string, string> = {
+  admin:     'overview',
+  gerente:   'products',
+  marketing: 'products',
+}
 
+export default function App() {
+  const { theme, activeTab, setActiveTab, setAllRows, setLoading } = useDashboardStore()
+  const { user, loading: authLoading } = useAuth()
+
+  // Aplica tema
   useEffect(() => {
     document.documentElement.classList.toggle('dark',  theme === 'dark')
     document.documentElement.classList.toggle('light', theme === 'light')
   }, [theme])
 
+  // Ao fazer login, salta para a aba padrão do role
   useEffect(() => {
+    if (user) {
+      const defaultTab = DEFAULT_TAB[user.role] ?? 'overview'
+      setActiveTab(defaultTab)
+    }
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Carrega dados do backend ou IndexedDB conforme modo
+  useEffect(() => {
+    if (!user) return
+    const USE_API = import.meta.env.VITE_USE_API === 'true'
+    if (USE_API) return  // em modo API, dados chegam via fetchSalesData no store
+
+    // Modo local (desenvolvimento): carrega do IndexedDB
+    const { loadRows } = require('@/services/db')
     setLoading(true)
     loadRows()
-      .then((rows) => { if (rows.length) setAllRows(rows) })
+      .then((rows: never[]) => { if (rows.length) setAllRows(rows) })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tela de loading do auth
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight:      '100vh',
+        background:     'var(--bg-primary)',
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'center',
+      }}>
+        <div style={{
+          width:        32, height: 32,
+          border:       '3px solid var(--border-default)',
+          borderTopColor: 'var(--accent)',
+          borderRadius: '50%',
+          animation:    'spin 1s linear infinite',
+        }} />
+      </div>
+    )
+  }
+
+  // Tela de login se não autenticado
+  if (!user) return <LoginPage />
+
+  const noFilterTabs = ['markup', 'feirao']
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       <Header />
       <TabNav />
-      {activeTab !== 'markup' && activeTab !== 'feirao' && <FilterBar />}
+      {!noFilterTabs.includes(activeTab) && <FilterBar />}
 
       <main style={{ padding: '1rem 1.5rem' }}>
-        {activeTab === 'overview'  && <OverviewPage />}
-        {activeTab === 'products'  && <ProductsPage />}
-        {activeTab === 'sellers'   && <SellersPage />}
+        {activeTab === 'overview'          && <OverviewPage />}
+        {activeTab === 'products'          && <ProductsPage />}
+        {activeTab === 'sellers'           && <SellersPage />}
         {activeTab === 'comparison'        && <VendorComparison />}
         {activeTab === 'productComparison' && <ProductComparison />}
-        {activeTab === 'markup'           && <MarkupPage />}
-        {activeTab === 'feirao'           && <FeiraoPlanner />}
-        {activeTab === 'clients'   && <ClientsPage />}
-        {activeTab === 'heatmap'   && <BairroHeatmap />}
-        {activeTab === 'insights'  && <AIInsights />}
-        {activeTab === 'table'     && <TablePage />}
+        {activeTab === 'markup'            && <MarkupPage />}
+        {activeTab === 'feirao'            && <FeiraoPlanner />}
+        {activeTab === 'clients'           && <ClientsPage />}
+        {activeTab === 'heatmap'           && <BairroHeatmap />}
+        {activeTab === 'insights'          && <AIInsights />}
+        {activeTab === 'table'             && <TablePage />}
       </main>
 
-      <ImportModal />
+      {/* ImportModal apenas para admin */}
+      {user.role === 'admin' && <ImportModal />}
     </div>
   )
 }

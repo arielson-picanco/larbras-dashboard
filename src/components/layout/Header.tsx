@@ -2,9 +2,10 @@
 // MÓDULO 3 — Componente Header
 // ============================================================
 
-import { Moon, Sun, Upload, Trash2, RefreshCw } from 'lucide-react'
+import { Moon, Sun, Upload, Trash2, RefreshCw, LogOut } from 'lucide-react'
 import { useDashboardStore }  from '@/store/useDashboardStore'
 import { clearRows }          from '@/services/db'
+import { useAuth }             from '@/contexts/AuthContext'
 import { formatDate }         from '@/services/analytics'
 
 export function Header() {
@@ -16,6 +17,7 @@ export function Header() {
     clearData,
     isLoading,
   } = useDashboardStore()
+  const { user, logout } = useAuth()
 
   const handleClear = async () => {
     if (!confirm('Remover todos os dados importados?')) return
@@ -124,8 +126,8 @@ export function Header() {
           </button>
         )}
 
-        {/* Import button */}
-        <button
+        {/* Import button — somente admin */}
+        {user?.role === 'admin' && <button
           onClick={openImportModal}
           disabled={isLoading}
           style={{
@@ -157,7 +159,57 @@ export function Header() {
             : <Upload size={13} />
           }
           {isLoading ? 'Processando…' : 'Importar dados'}
-        </button>
+        </button>}
+
+        {/* User info + logout */}
+        {user && (
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{
+              background:   'var(--bg-card2)',
+              border:       '1px solid var(--border-subtle)',
+              borderRadius: 7,
+              padding:      '4px 10px',
+              fontSize:     11,
+              color:        'var(--text-secondary)',
+              display:      'flex',
+              alignItems:   'center',
+              gap:          6,
+            }}>
+              <span style={{
+                fontSize:     9,
+                fontWeight:   700,
+                textTransform:'uppercase',
+                letterSpacing:'.6px',
+                padding:      '2px 6px',
+                borderRadius: 4,
+                background:   user.role === 'admin' ? 'rgba(240,107,107,.15)' : user.role === 'gerente' ? 'rgba(91,141,238,.15)' : 'rgba(34,211,160,.15)',
+                color:        user.role === 'admin' ? '#f06b6b' : user.role === 'gerente' ? '#5b8dee' : '#22d3a0',
+              }}>
+                {user.role}
+              </span>
+              {user.name}
+            </div>
+            <button
+              onClick={logout}
+              title="Sair"
+              style={{
+                background:   'transparent',
+                border:       '1px solid var(--border-default)',
+                color:        'var(--text-secondary)',
+                borderRadius: 7,
+                padding:      '6px 8px',
+                cursor:       'pointer',
+                display:      'flex',
+                alignItems:   'center',
+                transition:   'all .15s',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.borderColor='var(--danger)'; e.currentTarget.style.color='var(--danger)' }}
+              onMouseOut={(e)  => { e.currentTarget.style.borderColor='var(--border-default)'; e.currentTarget.style.color='var(--text-secondary)' }}
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
+        )}
 
         {/* Theme toggle */}
         <button
