@@ -2,6 +2,7 @@
 // pages/LoginPage.tsx — Tela de login
 // ============================================================
 import { useState, FormEvent } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function LoginPage() {
@@ -10,6 +11,7 @@ export function LoginPage() {
   const [password,  setPassword]  = useState('')
   const [error,     setError]     = useState('')
   const [loading,   setLoading]   = useState(false)
+  const [showPass,  setShowPass]  = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -88,15 +90,40 @@ export function LoginPage() {
             <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--text-secondary)' }}>
               Senha
             </span>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="input"
-              style={{ fontSize: 14 }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="input"
+                style={{ fontSize: 14, width: '100%', paddingRight: 40 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(v => !v)}
+                style={{
+                  position:       'absolute',
+                  right:          10,
+                  top:            '50%',
+                  transform:      'translateY(-50%)',
+                  background:     'none',
+                  border:         'none',
+                  cursor:         'pointer',
+                  color:          'var(--text-tertiary)',
+                  display:        'flex',
+                  alignItems:     'center',
+                  padding:        4,
+                  transition:     'color .15s',
+                }}
+                onMouseOver={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                onMouseOut={e  => (e.currentTarget.style.color = 'var(--text-tertiary)')}
+                tabIndex={-1}
+              >
+                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </label>
 
           {error && (

@@ -98,9 +98,9 @@ export function buildDerived(rows: SaleRow[]): DerivedData {
     totalQty,
     uniqueClients,
     byVendedor,
-    byProduto:   groupBy(rows, '_produto',  '_val').slice(0, 20),
-    byMarca:     groupBy(rows, '_marca',    '_val').slice(0, 10),
-    byBairro:    groupBy(rows, '_bairro',   '_val').slice(0, 10),
+    byProduto:   groupBy(rows, '_produto',  '_val'),           // todos os produtos
+    byMarca:     groupBy(rows, '_marca',    '_val').slice(0, 30),
+    byBairro:    groupBy(rows, '_bairro',   '_val').slice(0, 30),
     byDate:      groupByDate(rows),
     topClientes: groupBy(rows, '_cliente',  '_val').slice(0, 10),
   }

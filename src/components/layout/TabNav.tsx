@@ -2,7 +2,7 @@
 // MÓDULO 3 — Navegação por abas (com controle de acesso por role)
 // ============================================================
 
-import { Sparkles, Users, Package, Tag } from 'lucide-react'
+import { Sparkles, Users, Package, Tag, Wifi } from 'lucide-react'
 import { useDashboardStore } from '@/store/useDashboardStore'
 import { useAuth }           from '@/contexts/AuthContext'
 
@@ -19,6 +19,8 @@ const ALL_TABS = [
   { id: 'heatmap',           label: 'Mapa de Calor',         roles: ['admin', 'gerente', 'marketing'] },
   { id: 'insights',          label: 'Insights IA',           roles: ['admin', 'gerente', 'marketing'], accent: true },
   { id: 'table',             label: 'Dados Detalhados',      roles: ['admin'] },
+  { id: 'omie',             label: 'Omiê ERP',              roles: ['admin'], accent: true },
+  { id: 'users',            label: 'Usuários',              roles: ['admin'] },
 ]
 
 export function TabNav() {
@@ -76,6 +78,7 @@ export function TabNav() {
             {tab.accent && tab.id === 'feirao'            && <Tag      size={11} style={{ color: active ? 'var(--accent)' : 'var(--text-tertiary)' }} />}
             {tab.accent && tab.id === 'productComparison' && <Package  size={11} style={{ color: active ? 'var(--accent)' : 'var(--text-tertiary)' }} />}
             {tab.accent && tab.id === 'insights'          && <Sparkles size={11} style={{ color: active ? 'var(--accent)' : 'var(--text-tertiary)' }} />}
+            {tab.accent && tab.id === 'omie'              && <Wifi     size={11} style={{ color: active ? 'var(--accent)' : 'var(--text-tertiary)' }} />}
             {tab.label}
           </button>
         )

@@ -15,6 +15,8 @@ import { VendorComparison }  from '@/components/comparison/VendorComparison'
 import { ProductComparison } from '@/components/productComparison/ProductComparison'
 import { MarkupPage }        from '@/components/markup/MarkupPage'
 import { FeiraoPlanner }     from '@/components/feirao/FeiraoPlanner'
+import { OmieSync }          from '@/components/omie/OmieSync'
+import { UserManagement }    from '@/components/admin/UserManagement'
 import { BairroHeatmap }     from '@/components/heatmap/BairroHeatmap'
 import {
   OverviewPage, ProductsPage, SellersPage, ClientsPage, TablePage,
@@ -45,19 +47,28 @@ export default function App() {
     }
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Carrega dados do backend ou IndexedDB conforme modo
+  // Carrega dados do backend (Supabase) ou IndexedDB conforme modo
   useEffect(() => {
     if (!user) return
-    const USE_API = import.meta.env.VITE_USE_API === 'true'
-    if (USE_API) return  // em modo API, dados chegam via fetchSalesData no store
 
-    // Modo local (desenvolvimento): carrega do IndexedDB
+    const USE_API = import.meta.env.VITE_USE_API === 'true'
     setLoading(true)
-    import('@/services/db')
-      .then(({ loadRows }) => loadRows())
-      .then((rows) => { if (rows.length) setAllRows(rows) })
-      .catch(console.error)
-      .finally(() => setLoading(false))
+
+    if (USE_API) {
+      // Modo API: busca do backend (1.309+ registros do Omiê no Supabase)
+      import('@/services/api')
+        .then(({ fetchSalesData }) => fetchSalesData())
+        .then((rows) => { if (rows.length) setAllRows(rows) })
+        .catch(console.error)
+        .finally(() => setLoading(false))
+    } else {
+      // Modo local: carrega do IndexedDB
+      import('@/services/db')
+        .then(({ loadRows }) => loadRows())
+        .then((rows) => { if (rows.length) setAllRows(rows) })
+        .catch(console.error)
+        .finally(() => setLoading(false))
+    }
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tela de loading do auth
@@ -84,7 +95,7 @@ export default function App() {
   // Tela de login se não autenticado
   if (!user) return <LoginPage />
 
-  const noFilterTabs = ['markup', 'feirao']
+  const noFilterTabs = ['markup', 'feirao', 'omie', 'users']
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
@@ -104,6 +115,8 @@ export default function App() {
         {activeTab === 'heatmap'           && <BairroHeatmap />}
         {activeTab === 'insights'          && <AIInsights />}
         {activeTab === 'table'             && <TablePage />}
+        {activeTab === 'omie'              && <OmieSync />}
+        {activeTab === 'users'             && <UserManagement />}
       </main>
 
       {/* ImportModal apenas para admin */}

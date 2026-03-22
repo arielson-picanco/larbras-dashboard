@@ -18,28 +18,38 @@ const upload  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20
 // O frontend recebe os dados crus e faz a análise client-side (buildDerived)
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const { dateFrom, dateTo, limit } = req.query
+    const { dateFrom, dateTo } = req.query
 
-    let query = supabase
-      .from('sales')
-      .select('data, valor, cliente, produto, marca, vendedor, bairro, quantidade, source')
-      .order('data', { ascending: true })
+    // Supabase tem limite de 1000 linhas por query — paginamos para buscar tudo
+    const PAGE_SIZE = 1000
+    let allData = []
+    let from = 0
+    let hasMore = true
 
-    if (dateFrom) query = query.gte('data', dateFrom)
-    if (dateTo)   query = query.lte('data', dateTo)
-    if (limit)    query = query.limit(parseInt(limit))
+    while (hasMore) {
+      let query = supabase
+        .from('sales')
+        .select('data, valor, cliente, produto, marca, vendedor, bairro, quantidade, source')
+        .order('data', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1)
 
-    // Vendedor só vê os próprios pedidos
-    if (req.user.role === 'vendedor') {
-      query = query.eq('vendedor', req.user.name)
+      if (dateFrom) query = query.gte('data', dateFrom)
+      if (dateTo)   query = query.lte('data', dateTo)
+
+      if (req.user.role === 'vendedor') {
+        query = query.eq('vendedor', req.user.name)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+
+      allData = allData.concat(data || [])
+      hasMore = (data && data.length === PAGE_SIZE)
+      from += PAGE_SIZE
     }
 
-    const { data, error, count } = await query
-
-    if (error) throw error
-
     // Converte para o formato SaleRow esperado pelo frontend
-    const rows = (data || []).map(row => ({
+    const rows = allData.map(row => ({
       _val:      parseFloat(row.valor),
       _cliente:  row.cliente,
       _bairro:   row.bairro,

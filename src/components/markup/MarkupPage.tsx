@@ -593,7 +593,6 @@ function ProductAdder({ onAdd, existingIds }: {
 
   const avail = (derived?.byProduto ?? [])
     .filter((p) => !existingIds.has(p.name))
-    .slice(0, 50)
 
   return (
     <div style={{ position:'relative' }}>
@@ -601,7 +600,7 @@ function ProductAdder({ onAdd, existingIds }: {
         onClick={() => setOpen(!open)}
         style={{ background:'var(--bg-card2)', border:'1px solid var(--border-default)', color:'var(--text-primary)', borderRadius:8, padding:'7px 12px', fontFamily:'inherit', fontSize:11, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}
       >
-        <Plus size={13} /> Importar da planilha
+        <Plus size={13} /> Selecionar produtos do Omiê
       </button>
       {open && (
         <div
@@ -609,7 +608,7 @@ function ProductAdder({ onAdd, existingIds }: {
           onMouseLeave={() => setOpen(false)}
         >
           <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--border-subtle)', fontSize:11, fontWeight:600, color:'var(--text-primary)' }}>
-            Selecionar produtos das vendas
+            Produtos do Omiê (via sync)
           </div>
           <div style={{ maxHeight:280, overflowY:'auto' }}>
             {avail.map((p) => (
@@ -637,7 +636,7 @@ function ProductAdder({ onAdd, existingIds }: {
               }}
               style={{ width:'100%', background:'var(--accent-muted)', border:'1px solid rgba(245,166,35,.3)', color:'var(--accent)', borderRadius:6, padding:'7px 0', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}
             >
-              Importar todos ({avail.length}) produtos
+              Adicionar todos ({avail.length} produtos)
             </button>
           </div>
         </div>

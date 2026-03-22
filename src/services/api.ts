@@ -15,7 +15,7 @@ function getToken(): string {
 }
 
 // ── Fetch autenticado — URL relativa passa pelo proxy Vite ────────────────────
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
   const res   = await fetch(`/api${path}`, {
     ...options,

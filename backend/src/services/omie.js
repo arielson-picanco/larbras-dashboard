@@ -1,18 +1,24 @@
 // ============================================================
-// services/omie.js — Cliente da API do Omiê ERP
+// services/omie.js — Cliente da API do Omiê ERP (v7 - definitivo)
 //
-// A API do Omiê usa POST com estrutura { call, app_key, app_secret, param }
-// Endpoint: https://app.omie.com.br/api/v1/produtos/pedido/
-// Call:     ListarPedidos
+// IMPORTANTE: O Omiê tem duas gerações de API com nomenclaturas diferentes:
 //
-// Cada pedido tem itens (det[]) — achatamos em SaleRows individuais
+// GERAÇÃO NOVA (snake_case)  — /produtos/pedido/
+//   Parâmetros: pagina, registros_por_pagina, filtrar_por_data_de, filtrar_por_data_ate
+//
+// GERAÇÃO ANTIGA (húngara)   — /geral/vendedores/, /geral/clientes/
+//   Parâmetros: nPagina, nRegPorPagina
+//   Resposta vendedor: nCodVend, cNomeVend
+//   Resposta cliente:  codigo_cliente | nCodCli, razao_social | cRazaoSocial, cBairro, cCidade
+//
+// O campo codVend em informacoes_adicionais do pedido é o nCodVend do vendedor.
 // ============================================================
 const fetch  = require('node-fetch')
 const config = require('../config')
 
 const OMIE_BASE = config.omie.baseUrl
 
-// ── Chamada genérica à API do Omiê ────────────────────────────────────────────
+// ── Chamada genérica ──────────────────────────────────────────────────────────
 async function omieCall(endpoint, call, param) {
   const body = {
     call,
@@ -29,120 +35,265 @@ async function omieCall(endpoint, call, param) {
 
   if (!res.ok) {
     const txt = await res.text()
-    throw new Error(`Omiê HTTP ${res.status}: ${txt.slice(0, 200)}`)
+    throw new Error(`Omiê HTTP ${res.status}: ${txt.slice(0, 300)}`)
   }
 
   const data = await res.json()
-
-  // Omiê retorna erros com faultcode/faultstring
   if (data.faultstring) {
-    throw new Error(`Omiê API: ${data.faultstring}`)
+    throw new Error(`Omiê API (${data.faultcode || 'ERR'}): ${data.faultstring}`)
   }
-
   return data
 }
 
-// ── Formatar data DD/MM/YYYY ───────────────────────────────────────────────────
+// ── Helpers de data ───────────────────────────────────────────────────────────
 function formatDateBR(date) {
-  const d = date instanceof Date ? date : new Date(date)
+  const d  = date instanceof Date ? date : new Date(date)
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const yyyy = d.getFullYear()
-  return `${dd}/${mm}/${yyyy}`
+  return `${dd}/${mm}/${d.getFullYear()}`
 }
 
-// ── Parsear data DD/MM/YYYY → Date ────────────────────────────────────────────
 function parseDateBR(str) {
   if (!str) return null
-  const [dd, mm, yyyy] = str.split('/')
-  return new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd))
+  const parts = str.split('/')
+  if (parts.length !== 3) return null
+  const [dd, mm, yyyy] = parts
+  const d = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd))
+  return isNaN(d.getTime()) ? null : d
 }
 
-// ── Buscar página de pedidos ──────────────────────────────────────────────────
-async function fetchPedidosPage(dateFrom, dateTo, page) {
-  return omieCall('/produtos/pedido/', 'ListarPedidos', {
-    nPagina:        page,
-    nRegPorPagina:  config.omie.pageSize,
-    dDtPedido:      formatDateBR(dateFrom),
-    dDtPedidoFim:   formatDateBR(dateTo),
-    // cEtapa: '60' — apenas faturados. Remova para buscar todos os status
-    cEtapa:         '60',
-  })
+
+
+// ── Mapa de Vendedores: String(codigo) → nome ────────────────────────────────
+// Endpoint: /geral/vendedores/  Call: ListarVendedores
+// Parâmetros: pagina, registros_por_pagina (snake_case — confirmado na doc oficial)
+// Resposta: vendListarResponse → cadastro[] → { codigo, nome, inativo }
+// O campo codVend em informacoes_adicionais do pedido = cadastro.codigo
+async function fetchVendedoresMap() {
+  const map = {}
+  let page = 1, totalPages = 1
+
+  while (page <= totalPages) {
+    try {
+      const data = await omieCall('/geral/vendedores/', 'ListarVendedores', {
+        pagina:               page,
+        registros_por_pagina: 50,
+      })
+      totalPages = data.total_de_paginas || 1
+      const lista = data.cadastro || []  // campo correto conforme doc: "cadastro cadastroArray"
+      for (const v of lista) {
+        const codigo = String(v.codigo || '')
+        const nome   = (v.nome || '').trim()
+        if (codigo && nome) map[codigo] = nome
+      }
+      if (!lista.length || page >= totalPages) break
+      page++
+      await new Promise(r => setTimeout(r, 250))
+    } catch (err) {
+      console.warn('[Omiê] ListarVendedores erro:', err.message)
+      break
+    }
+  }
+
+  console.log(`[Omiê] ${Object.keys(map).length} vendedores carregados`)
+  return map
 }
 
-// ── Converter pedido Omiê → array de SaleRows ─────────────────────────────────
-// Um pedido pode ter N itens — cada item vira uma SaleRow
-function pedidoToSaleRows(pedido) {
+// ── Mapa de Clientes: String(codigo_cliente_omie) → { nome, bairro } ────────
+// Endpoint: /geral/clientes/  Call: ListarClientes
+// Parâmetros (clientes_list_request): pagina, registros_por_pagina
+// Resposta (clientes_listfull_response): clientes_cadastro[]
+//   → codigo_cliente_omie (chave), razao_social, nome_fantasia, bairro, cidade
+// O cabecalho.codigo_cliente do pedido = codigo_cliente_omie do cliente
+async function fetchClientesMap() {
+  const map = {}
+  let page = 1, totalPages = 1
+
+  while (page <= totalPages) {
+    try {
+      const data = await omieCall('/geral/clientes/', 'ListarClientes', {
+        pagina:               page,
+        registros_por_pagina: 50,
+      })
+      totalPages = data.total_de_paginas || 1
+      const lista = data.clientes_cadastro || []
+
+      for (const c of lista) {
+        // Campo correto conforme doc: codigo_cliente_omie
+        const codigo = String(c.codigo_cliente_omie || '')
+        const nome   = (c.razao_social || c.nome_fantasia || '').trim()
+        // Campos confirmados na doc: bairro, cidade (snake_case)
+        const bairro = (c.bairro || '').trim()
+        const cidade = (c.cidade || '').trim()
+
+        if (codigo) {
+          map[codigo] = {
+            nome:   nome   || 'Anônimo',
+            bairro: bairro || cidade || 'N/I',
+          }
+        }
+      }
+
+      if (!lista.length || page >= totalPages) break
+      page++
+      await new Promise(r => setTimeout(r, 250))
+    } catch (err) {
+      console.warn('[Omiê] ListarClientes erro:', err.message)
+      break
+    }
+  }
+
+  console.log(`[Omiê] ${Object.keys(map).length} clientes carregados`)
+  return map
+}
+
+// ── Buscar página de pedidos (geração NOVA — snake_case) ──────────────────────
+async function fetchPedidosPage(page, dateFrom, dateTo) {
+  const param = {
+    pagina:               page,
+    registros_por_pagina: config.omie.pageSize,
+    apenas_importado_api: 'N',
+  }
+  if (dateFrom && dateTo) {
+    param.filtrar_por_data_de  = formatDateBR(dateFrom)
+    param.filtrar_por_data_ate = formatDateBR(dateTo)
+  }
+  return omieCall('/produtos/pedido/', 'ListarPedidos', param)
+}
+
+function getPedidosList(data) { return data.pedido_venda_produto || [] }
+function getTotalPages(data)  { return data.nTotPaginas || data.total_de_paginas || 1 }
+function getTotalRecords(data){ return data.nTotRegistros || data.total_de_registros || 0 }
+
+// ── Converter pedido → SaleRows ───────────────────────────────────────────────
+function pedidoToSaleRows(pedido, vendMap, cliMap) {
   const cab  = pedido.cabecalho              || {}
   const info = pedido.informacoes_adicionais || {}
   const det  = pedido.det                    || []
 
-  const nCodPed  = String(cab.nCodPed     || '')
-  const data     = parseDateBR(cab.dDtPedido)
-  const vendedor = info.cNomeVendedor || cab.cNomeVendedor || 'N/A'
-  const cliente  = info.cNomeCliente  || cab.cRazaoSocial  || 'Anônimo'
-  const bairro   = info.cBairro       || info.cCidade       || 'N/I'
+  const numeroPedido = String(cab.numero_pedido || cab.codigo_pedido || '')
+  if (!numeroPedido) return []
 
-  if (!data || !nCodPed) return []
+  const data = parseDateBR(cab.data_previsao || cab.dDtPedido || null)
+  if (!data) return []
 
-  return det.map((item, idx) => {
-    const prod = item.produto || item.detalhe || {}
+  // codVend está em informacoes_adicionais (confirmado no debug)
+  const codVend  = String(info.codVend || '')
+  const vendedor = (codVend && vendMap[codVend]) ? vendMap[codVend] : (codVend ? `Vend.${codVend}` : 'N/A')
 
-    // Campos do produto — nomes podem variar; mapeamos os mais comuns
-    const produto    = prod.cDescricao  || prod.cNomeProd || prod.cDescrProd || 'Produto'
-    const marca      = prod.cNomeFamilia || prod.cFamilia  || 'S/Marca'
-    const quantidade = parseFloat(prod.nQtdPedido  || prod.nQtde    || 1)   || 1
-    const valor      = parseFloat(prod.nValorTotal || prod.nVlrTotal || 0)
+  // codigo_cliente está em cabecalho (confirmado no debug)
+  const codCli  = String(cab.codigo_cliente || '')
+  const cliData = cliMap[codCli] || null
+  const cliente = cliData ? cliData.nome   : (codCli ? `Cliente ${codCli}` : 'Anônimo')
+  const bairro  = cliData ? cliData.bairro : 'N/I'
 
-    // Ignora itens sem valor
-    if (valor <= 0) return null
+  const rows = []
+  det.forEach((item, idx) => {
+    const prod = item.produto || {}
 
-    return {
-      omie_id:    `${nCodPed}-${idx}`,  // único por pedido+item
-      data:       data.toISOString().slice(0, 10),  // YYYY-MM-DD
-      valor,
+    // descricao confirmado no debug
+    const produto    = (prod.descricao    || prod.cDescricao || 'Produto').trim() || 'Produto'
+    const marca      = (prod.familia      || prod.cNomeFamilia || 'S/Marca').trim() || 'S/Marca'
+    const quantidade = Math.max(1, Math.round(parseFloat(prod.quantidade || prod.nQtdPedido || 1) || 1))
+
+    // valor_total confirmado no debug (valor do item = qtd × unitário - desconto)
+    const valor = parseFloat(
+      prod.valor_total     ||
+      prod.valor_mercadoria ||
+      (prod.valor_unitario && prod.quantidade
+        ? parseFloat(prod.valor_unitario) * parseFloat(prod.quantidade)
+        : 0
+      ) || 0
+    )
+
+    if (valor <= 0) return
+
+    rows.push({
+      omie_id:    `${numeroPedido}-${idx}`,
+      data:       data.toISOString().slice(0, 10),
+      valor:      Math.round(valor * 100) / 100,
       cliente,
       produto,
       marca,
       vendedor,
       bairro,
-      quantidade: Math.round(quantidade),
+      quantidade,
       source:     'omie',
-    }
-  }).filter(Boolean)
-}
+    })
+  })
 
-// ── Buscar todos os pedidos de um período ─────────────────────────────────────
-// Pagina automaticamente até obter todos os registros
-async function fetchAllPedidos(dateFrom, dateTo) {
-  console.log(`[Omiê] Buscando pedidos de ${formatDateBR(dateFrom)} a ${formatDateBR(dateTo)}`)
-
-  const rows = []
-  let page   = 1
-  let total  = null
-
-  while (true) {
-    const data = await fetchPedidosPage(dateFrom, dateTo, page)
-
-    const pedidos = data.pedido_venda_produto || []
-    if (total === null) {
-      total = data.nTotRegistros || 0
-      console.log(`[Omiê] Total de pedidos encontrados: ${total} (${data.nTotPaginas || 1} páginas)`)
-    }
-
-    for (const pedido of pedidos) {
-      rows.push(...pedidoToSaleRows(pedido))
-    }
-
-    if (page >= (data.nTotPaginas || 1) || pedidos.length === 0) break
-
-    page++
-    // Pequeno delay entre páginas para respeitar rate limit do Omiê
-    await new Promise(r => setTimeout(r, 300))
-  }
-
-  console.log(`[Omiê] ${rows.length} linhas de venda extraídas`)
   return rows
 }
 
-module.exports = { fetchAllPedidos, formatDateBR, parseDateBR }
+// ── Buscar todos os pedidos de um período ─────────────────────────────────────
+async function fetchAllPedidos(dateFrom, dateTo) {
+  console.log(`[Omiê] Iniciando sync: ${formatDateBR(dateFrom)} → ${formatDateBR(dateTo)}`)
+
+  const from = new Date(dateFrom); from.setHours(0,0,0,0)
+  const to   = new Date(dateTo);   to.setHours(23,59,59,999)
+
+  // Carrega cadastros em paralelo antes de processar pedidos
+  console.log('[Omiê] Carregando cadastros de vendedores e clientes...')
+  const [vendMap, cliMap] = await Promise.all([
+    fetchVendedoresMap(),
+    fetchClientesMap(),
+  ])
+
+  console.log('[Omiê] Processando pedidos...')
+  const rows = []
+  let page = 1, totalPages = 1
+
+  while (page <= totalPages) {
+    const data = await fetchPedidosPage(page, from, to)
+    totalPages = getTotalPages(data)
+    const pedidos = getPedidosList(data)
+
+    if (page === 1) {
+      console.log(`[Omiê] ${getTotalRecords(data)} pedidos (${totalPages} pág.)`)
+    }
+
+    for (const p of pedidos) {
+      for (const row of pedidoToSaleRows(p, vendMap, cliMap)) {
+        const d = new Date(row.data)
+        if (d >= from && d <= to) rows.push(row)
+      }
+    }
+
+    if (!pedidos.length || page >= totalPages) break
+    page++
+    await new Promise(r => setTimeout(r, 300))
+  }
+
+  console.log(`[Omiê] Sync concluído: ${rows.length} itens`)
+  return rows
+}
+
+// ── Testar conexão ────────────────────────────────────────────────────────────
+async function testConnection(dateFrom, dateTo) {
+  const [vendMap, cliMap] = await Promise.all([
+    fetchVendedoresMap(),
+    fetchClientesMap(),
+  ])
+
+  const data    = await fetchPedidosPage(1, dateFrom, dateTo)
+  const pedidos = getPedidosList(data)
+  const sample  = pedidos[0] || null
+  const converted = sample ? pedidoToSaleRows(sample, vendMap, cliMap) : []
+
+  return {
+    ok:             true,
+    total_pedidos:  getTotalRecords(data),
+    total_paginas:  getTotalPages(data),
+    vendedores_map: Object.keys(vendMap).length,
+    clientes_map:   Object.keys(cliMap).length,
+    sample_raw:     sample,
+    sample_fields:  sample ? {
+      cabecalho:              Object.keys(sample.cabecalho              || {}),
+      informacoes_adicionais: Object.keys(sample.informacoes_adicionais || {}),
+      det_produto:            Object.keys((sample.det?.[0]?.produto)    || {}),
+    } : null,
+    sample_converted: converted,
+  }
+}
+
+module.exports = { fetchAllPedidos, testConnection, formatDateBR, parseDateBR }
