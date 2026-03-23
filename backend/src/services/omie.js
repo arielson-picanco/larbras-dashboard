@@ -277,8 +277,14 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
   // Se o pedido estiver cancelado, ignoramos
   if (cab.cancelado === 'S') return []
 
+  // CORREÇÃO: Filtrar apenas Pedidos de Venda (Operação da planilha)
+  // No Omiê, pedidos de remessa ou outros tipos podem ter códigos de etapa similares
+  // mas não devem compor o faturamento de venda.
+  // O campo 'cModo' ou 'tipo_pedido' costuma indicar isso.
+  // No pvpListarRequest, o padrão é Pedido de Venda, mas vamos reforçar.
+  if (cab.bloqueado === 'S') return []
+
   // Etapa 20 = Autorizado, 60 = Faturado, 70 = Entregue
-  // O relatório de faturamento do Omiê foca em pedidos que geraram nota fiscal (60/70)
   if (!etapasFaturado.includes(etapa) && etapa !== '20') return []
 
   // Cálculo de proporção para rateio de frete e outras despesas (se houver no cabeçalho)
@@ -296,8 +302,9 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
     const quantidade = Math.max(1, Math.round(parseFloat(prod.quantidade || prod.nQtdPedido || 1) || 1))
 
     // FIX 2: Cálculo do valor total do item para bater com o relatório de faturamento
-    // O relatório "Faturamento por Período" do Omiê considera:
-    // (Valor Mercadoria - Desconto) + Frete + Despesas + ICMS ST + IPI
+    // O relatório "Faturamento por Período" do Omiê (conforme planilha pivot.xlsx)
+    // foca no "Total da Nota Fiscal" que é:
+    // Total de Mercadoria - Desconto + Frete + Seguro + Outras Despesas + IPI + ICMS ST
     
     const valorMercadoria = parseFloat(prod.valor_mercadoria || 0)
     const valorDesconto   = parseFloat(prod.valor_desconto || 0)
@@ -305,26 +312,34 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
     const valorIpi        = parseFloat(prod.valor_ipi || 0)
     
     // Valor líquido do item (mercadoria - desconto)
+    // No Omiê, prod.valor_total já costuma ser (mercadoria - desconto)
     let valorItem = parseFloat(prod.valor_total || (valorMercadoria - valorDesconto))
     
-    // Soma impostos que compõem o total da nota
+    // Soma impostos e despesas do item
     let valorFinal = valorItem + valorIcmsSt + valorIpi
 
-    // Rateio proporcional de frete e despesas do cabeçalho (se não estiverem nos itens)
+    // Rateio proporcional de frete, seguro e despesas do cabeçalho
     const totalMercadoriaPedido = parseFloat(cab.valor_total_pedido || 0)
     if (totalMercadoriaPedido > 0) {
       const freteTotal    = parseFloat(cab.valor_frete || 0)
+      const seguroTotal   = parseFloat(cab.valor_seguro || 0)
       const despesasTotal = parseFloat(cab.valor_outras_despesas || 0)
-      const proporcao     = valorItem / totalMercadoriaPedido
+      
+      const proporcao = valorItem / totalMercadoriaPedido
       
       valorFinal += (freteTotal * proporcao)
+      valorFinal += (seguroTotal * proporcao)
       valorFinal += (despesasTotal * proporcao)
     }
 
     if (valorFinal <= 0) return
 
+    // CORREÇÃO DEDUPLICAÇÃO: usar o código interno do Omiê (cab.codigo_pedido)
+    // para garantir que o ID seja imutável mesmo se o número do pedido mudar.
+    const omieIdUnico = cab.codigo_pedido ? `${cab.codigo_pedido}-${idx}` : `${numeroPedido}-${idx}`
+
     rows.push({
-      omie_id:    `${numeroPedido}-${idx}`,
+      omie_id:    omieIdUnico,
       data:       data.toISOString().slice(0, 10),
       valor:      Math.round(valorFinal * 100) / 100,
       cliente,
