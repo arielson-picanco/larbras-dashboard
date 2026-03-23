@@ -228,8 +228,12 @@ async function fetchPedidosPage(page, dateFrom, dateTo, etapa) {
   if (dateFrom && dateTo) {
     param.filtrar_por_data_de  = formatDateBR(dateFrom)
     param.filtrar_por_data_ate = formatDateBR(dateTo)
+<<<<<<< HEAD
     // Removido filtrar_por_situacao pois não é aceito pela API (Erro 5001)
     // A filtragem será feita no processamento dos resultados (pedidoToSaleRows)
+=======
+    param.filtrar_por_situacao = 'AUTORIZADO'
+>>>>>>> 7663ac02 (fix: corrigir discrepância de faturamento na integração Omie)
   }
   return omieCall('/produtos/pedido/', 'ListarPedidos', param)
 }
@@ -269,6 +273,7 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
   const cliente = cliData ? cliData.nome   : (codCli ? `Cliente ${codCli}` : 'Anônimo')
   const bairro  = cliData ? cliData.bairro : 'N/I'
 
+<<<<<<< HEAD
   // Filtro de segurança: processar apenas pedidos faturados, entregues ou autorizados
   // No Omiê, a etapa pode vir em cabecalho.etapa ou cabecalho.cEtapa
   const etapa = String(cab.etapa || cab.cEtapa || '')
@@ -286,6 +291,12 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
 
   // Etapa 20 = Autorizado, 60 = Faturado, 70 = Entregue
   if (!etapasFaturado.includes(etapa) && etapa !== '20') return []
+=======
+  // Filtro de segurança: processar apenas pedidos com situação 'Autorizado'
+  // No Omiê, a situação pode vir em cabecalho.etapa ou cabecalho.cEtapa
+  const situacao = (cab.etapa || cab.cEtapa || '').toUpperCase()
+  if (situacao && situacao !== '20' && situacao !== 'AUTORIZADO') return []
+>>>>>>> 7663ac02 (fix: corrigir discrepância de faturamento na integração Omie)
 
   // Cálculo de proporção para rateio de frete e outras despesas (se houver no cabeçalho)
   const totalMercadoria = parseFloat(cab.valor_total_pedido || 0)
@@ -301,6 +312,7 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
     const marca      = (prod.familia      || prod.cNomeFamilia || 'S/Marca').trim() || 'S/Marca'
     const quantidade = Math.max(1, Math.round(parseFloat(prod.quantidade || prod.nQtdPedido || 1) || 1))
 
+<<<<<<< HEAD
     // FIX 2: Cálculo do valor total do item para bater com o relatório de faturamento
     // O relatório "Faturamento por Período" do Omiê (conforme planilha pivot.xlsx)
     // foca no "Total da Nota Fiscal" que é:
@@ -337,6 +349,35 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
     // CORREÇÃO DEDUPLICAÇÃO: usar o código interno do Omiê (cab.codigo_pedido)
     // para garantir que o ID seja imutável mesmo se o número do pedido mudar.
     const omieIdUnico = cab.codigo_pedido ? `${cab.codigo_pedido}-${idx}` : `${numeroPedido}-${idx}`
+=======
+    // Valor líquido do item (já considera desconto do item se houver)
+    let valorItem = parseFloat(
+      prod.valor_total     ||
+      prod.valor_mercadoria ||
+      (prod.valor_unitario && prod.quantidade
+        ? parseFloat(prod.valor_unitario) * parseFloat(prod.quantidade)
+        : 0
+      ) || 0
+    )
+
+    // Rateio de valores do cabeçalho (Frete, Despesas, ICMS ST, IPI)
+    // Se o valor_total do item não incluir esses campos, somamos proporcionalmente
+    const icmsST = parseFloat(prod.valor_icms_st || 0)
+    const ipi    = parseFloat(prod.valor_ipi || 0)
+    
+    let valorFinal = valorItem + icmsST + ipi
+
+    // Rateio proporcional de frete e despesas do cabeçalho
+    if (totalMercadoria > 0) {
+      const proporcao = valorItem / totalMercadoria
+      valorFinal += (freteTotal * proporcao)
+      valorFinal += (despesasTotal * proporcao)
+      // O desconto do cabeçalho geralmente já está refletido no valor_total do item no Omiê, 
+      // mas se não estiver, aplicaríamos aqui: valorFinal -= (descontoTotal * proporcao)
+    }
+
+    if (valorFinal <= 0) return
+>>>>>>> 7663ac02 (fix: corrigir discrepância de faturamento na integração Omie)
 
     rows.push({
       omie_id:    omieIdUnico,
