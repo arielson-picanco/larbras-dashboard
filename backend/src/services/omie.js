@@ -157,6 +157,7 @@ async function fetchPedidosPage(page, dateFrom, dateTo) {
   if (dateFrom && dateTo) {
     param.filtrar_por_data_de  = formatDateBR(dateFrom)
     param.filtrar_por_data_ate = formatDateBR(dateTo)
+    param.filtrar_por_situacao = 'AUTORIZADO'
   }
   return omieCall('/produtos/pedido/', 'ListarPedidos', param)
 }
@@ -187,17 +188,27 @@ function pedidoToSaleRows(pedido, vendMap, cliMap) {
   const cliente = cliData ? cliData.nome   : (codCli ? `Cliente ${codCli}` : 'Anônimo')
   const bairro  = cliData ? cliData.bairro : 'N/I'
 
+  // Filtro de segurança: processar apenas pedidos com situação 'Autorizado'
+  // No Omiê, a situação pode vir em cabecalho.etapa ou cabecalho.cEtapa
+  const situacao = (cab.etapa || cab.cEtapa || '').toUpperCase()
+  if (situacao && situacao !== '20' && situacao !== 'AUTORIZADO') return []
+
+  // Cálculo de proporção para rateio de frete e outras despesas (se houver no cabeçalho)
+  const totalMercadoria = parseFloat(cab.valor_total_pedido || 0)
+  const freteTotal      = parseFloat(cab.valor_frete || 0)
+  const despesasTotal   = parseFloat(cab.valor_outras_despesas || 0)
+  const descontoTotal   = parseFloat(cab.valor_desconto || 0)
+
   const rows = []
   det.forEach((item, idx) => {
     const prod = item.produto || {}
 
-    // descricao confirmado no debug
     const produto    = (prod.descricao    || prod.cDescricao || 'Produto').trim() || 'Produto'
     const marca      = (prod.familia      || prod.cNomeFamilia || 'S/Marca').trim() || 'S/Marca'
     const quantidade = Math.max(1, Math.round(parseFloat(prod.quantidade || prod.nQtdPedido || 1) || 1))
 
-    // valor_total confirmado no debug (valor do item = qtd × unitário - desconto)
-    const valor = parseFloat(
+    // Valor líquido do item (já considera desconto do item se houver)
+    let valorItem = parseFloat(
       prod.valor_total     ||
       prod.valor_mercadoria ||
       (prod.valor_unitario && prod.quantidade
@@ -206,12 +217,28 @@ function pedidoToSaleRows(pedido, vendMap, cliMap) {
       ) || 0
     )
 
-    if (valor <= 0) return
+    // Rateio de valores do cabeçalho (Frete, Despesas, ICMS ST, IPI)
+    // Se o valor_total do item não incluir esses campos, somamos proporcionalmente
+    const icmsST = parseFloat(prod.valor_icms_st || 0)
+    const ipi    = parseFloat(prod.valor_ipi || 0)
+    
+    let valorFinal = valorItem + icmsST + ipi
+
+    // Rateio proporcional de frete e despesas do cabeçalho
+    if (totalMercadoria > 0) {
+      const proporcao = valorItem / totalMercadoria
+      valorFinal += (freteTotal * proporcao)
+      valorFinal += (despesasTotal * proporcao)
+      // O desconto do cabeçalho geralmente já está refletido no valor_total do item no Omiê, 
+      // mas se não estiver, aplicaríamos aqui: valorFinal -= (descontoTotal * proporcao)
+    }
+
+    if (valorFinal <= 0) return
 
     rows.push({
       omie_id:    `${numeroPedido}-${idx}`,
       data:       data.toISOString().slice(0, 10),
-      valor:      Math.round(valor * 100) / 100,
+      valor:      Math.round(valorFinal * 100) / 100,
       cliente,
       produto,
       marca,
