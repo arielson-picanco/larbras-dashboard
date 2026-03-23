@@ -67,8 +67,8 @@ function parseDateBR(str) {
 }
 
 function getEtapasFaturado() {
-  const raw = process.env.OMIE_ETAPAS_FATURADO || config.omie.etapasFaturado || '60,70'
-  return raw.split(',').map(e => e.trim()).filter(Boolean)
+  const etapas = config.omie.etapasFaturado
+  return Array.isArray(etapas) ? etapas : (typeof etapas === 'string' ? etapas.split(',').map(e => e.trim()).filter(Boolean) : ['60', '70'])
 }
 
 // ── Vendedores ────────────────────────────────────────────────────────────────
@@ -269,11 +269,12 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
   const cliente = cliData ? cliData.nome   : (codCli ? `Cliente ${codCli}` : 'Anônimo')
   const bairro  = cliData ? cliData.bairro : 'N/I'
 
-  // Filtro de segurança: processar apenas pedidos com situação 'Autorizado' (Etapa 20)
+  // Filtro de segurança: processar apenas pedidos faturados ou entregues
   // No Omiê, a etapa pode vir em cabecalho.etapa ou cabecalho.cEtapa
   const etapa = String(cab.etapa || cab.cEtapa || '')
-  // Etapa 20 = Autorizado (Faturamento)
-  if (etapa !== '20' && etapa.toUpperCase() !== 'AUTORIZADO') return []
+  const etapasFaturado = getEtapasFaturado()
+  // Etapa 60 = Faturado, Etapa 70 = Entregue
+  if (!etapasFaturado.includes(etapa)) return []
 
   // Cálculo de proporção para rateio de frete e outras despesas (se houver no cabeçalho)
   const totalMercadoria = parseFloat(cab.valor_total_pedido || 0)
@@ -285,19 +286,15 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
   det.forEach((item, idx) => {
     const prod = item.produto || {}
 
-    // descricao confirmado no debug
     const produto    = (prod.descricao    || prod.cDescricao || 'Produto').trim() || 'Produto'
+    const marca      = (prod.familia      || prod.cNomeFamilia || 'S/Marca').trim() || 'S/Marca'
     const quantidade = Math.max(1, Math.round(parseFloat(prod.quantidade || prod.nQtdPedido || 1) || 1))
 
-    // valor_total confirmado no debug (valor do item = qtd × unitário - desconto)
-    const valor = parseFloat(
-      prod.valor_total     ||
-      prod.valor_mercadoria ||
-      (prod.valor_unitario && prod.quantidade
-        ? parseFloat(prod.valor_unitario) * parseFloat(prod.quantidade)
-        : 0
-      ) || 0
-    )
+    // FIX 2: usar valor_total do item (ja inclui desconto)
+    // valor_total = valor liquido do item apos desconto
+    // valor_mercadoria = valor bruto do item
+    // valor_desconto = desconto individual do item
+    const valor = parseFloat(prod.valor_total || 0)
 
     if (valor <= 0) return
 

@@ -37,7 +37,7 @@ module.exports = {
     //
     // Para descobrir seus códigos: use "Testar Conexão" no painel Omiê do
     // dashboard e inspecione o campo "etapas_encontradas" no resultado.
-    etapasFaturado:  process.env.OMIE_ETAPAS_FATURADO || '60,70',
+    etapasFaturado:  (process.env.OMIE_ETAPAS_FATURADO || '60,70').split(',').map(e => e.trim()),
   },
 
   ai: {
