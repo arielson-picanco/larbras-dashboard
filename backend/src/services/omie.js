@@ -269,12 +269,17 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
   const cliente = cliData ? cliData.nome   : (codCli ? `Cliente ${codCli}` : 'Anônimo')
   const bairro  = cliData ? cliData.bairro : 'N/I'
 
-  // Filtro de segurança: processar apenas pedidos faturados ou entregues
+  // Filtro de segurança: processar apenas pedidos faturados, entregues ou autorizados
   // No Omiê, a etapa pode vir em cabecalho.etapa ou cabecalho.cEtapa
   const etapa = String(cab.etapa || cab.cEtapa || '')
   const etapasFaturado = getEtapasFaturado()
-  // Etapa 60 = Faturado, Etapa 70 = Entregue
-  if (!etapasFaturado.includes(etapa)) return []
+  
+  // Se o pedido estiver cancelado, ignoramos
+  if (cab.cancelado === 'S') return []
+
+  // Etapa 20 = Autorizado, 60 = Faturado, 70 = Entregue
+  // O relatório de faturamento do Omiê foca em pedidos que geraram nota fiscal (60/70)
+  if (!etapasFaturado.includes(etapa) && etapa !== '20') return []
 
   // Cálculo de proporção para rateio de frete e outras despesas (se houver no cabeçalho)
   const totalMercadoria = parseFloat(cab.valor_total_pedido || 0)
@@ -290,18 +295,38 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
     const marca      = (prod.familia      || prod.cNomeFamilia || 'S/Marca').trim() || 'S/Marca'
     const quantidade = Math.max(1, Math.round(parseFloat(prod.quantidade || prod.nQtdPedido || 1) || 1))
 
-    // FIX 2: usar valor_total do item (ja inclui desconto)
-    // valor_total = valor liquido do item apos desconto
-    // valor_mercadoria = valor bruto do item
-    // valor_desconto = desconto individual do item
-    const valor = parseFloat(prod.valor_total || 0)
+    // FIX 2: Cálculo do valor total do item para bater com o relatório de faturamento
+    // O relatório "Faturamento por Período" do Omiê considera:
+    // (Valor Mercadoria - Desconto) + Frete + Despesas + ICMS ST + IPI
+    
+    const valorMercadoria = parseFloat(prod.valor_mercadoria || 0)
+    const valorDesconto   = parseFloat(prod.valor_desconto || 0)
+    const valorIcmsSt     = parseFloat(prod.valor_icms_st || 0)
+    const valorIpi        = parseFloat(prod.valor_ipi || 0)
+    
+    // Valor líquido do item (mercadoria - desconto)
+    let valorItem = parseFloat(prod.valor_total || (valorMercadoria - valorDesconto))
+    
+    // Soma impostos que compõem o total da nota
+    let valorFinal = valorItem + valorIcmsSt + valorIpi
 
-    if (valor <= 0) return
+    // Rateio proporcional de frete e despesas do cabeçalho (se não estiverem nos itens)
+    const totalMercadoriaPedido = parseFloat(cab.valor_total_pedido || 0)
+    if (totalMercadoriaPedido > 0) {
+      const freteTotal    = parseFloat(cab.valor_frete || 0)
+      const despesasTotal = parseFloat(cab.valor_outras_despesas || 0)
+      const proporcao     = valorItem / totalMercadoriaPedido
+      
+      valorFinal += (freteTotal * proporcao)
+      valorFinal += (despesasTotal * proporcao)
+    }
+
+    if (valorFinal <= 0) return
 
     rows.push({
       omie_id:    `${numeroPedido}-${idx}`,
       data:       data.toISOString().slice(0, 10),
-      valor:      Math.round(valor * 100) / 100,
+      valor:      Math.round(valorFinal * 100) / 100,
       cliente,
       produto,
       marca,
@@ -318,8 +343,11 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
 // ── Buscar todos os pedidos FATURADOS de um período ───────────────────────────
 async function fetchAllPedidos(dateFrom, dateTo) {
   const etapasFaturado = getEtapasFaturado()
+  // Incluímos a etapa 20 (Autorizado) na busca para garantir que pedidos recém-autorizados entrem no sync
+  const etapasBusca = [...new Set([...etapasFaturado, '20'])]
+  
   console.log(`[Omiê] Iniciando sync: ${formatDateBR(dateFrom)} → ${formatDateBR(dateTo)}`)
-  console.log(`[Omiê] Filtrando etapas: ${etapasFaturado.join(', ')} (faturado/entregue)`)
+  console.log(`[Omiê] Filtrando etapas: ${etapasBusca.join(', ')} (autorizado/faturado/entregue)`)
 
   // Busca com margem extra de ±15 dias para capturar pedidos cujo enc_data
   // cai dentro do período mesmo que o data_previsao esteja fora.
@@ -338,7 +366,7 @@ async function fetchAllPedidos(dateFrom, dateTo) {
   console.log('[Omiê] Processando pedidos faturados...')
   const rowsMap = new Map()
 
-  for (const etapa of etapasFaturado) {
+  for (const etapa of etapasBusca) {
     console.log(`[Omiê] Buscando etapa ${etapa}...`)
     let page = 1, totalPages = 1
 
