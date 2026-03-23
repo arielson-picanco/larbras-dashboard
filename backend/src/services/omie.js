@@ -228,7 +228,8 @@ async function fetchPedidosPage(page, dateFrom, dateTo, etapa) {
   if (dateFrom && dateTo) {
     param.filtrar_por_data_de  = formatDateBR(dateFrom)
     param.filtrar_por_data_ate = formatDateBR(dateTo)
-    param.filtrar_por_situacao = 'AUTORIZADO'
+    // Removido filtrar_por_situacao pois não é aceito pela API (Erro 5001)
+    // A filtragem será feita no processamento dos resultados (pedidoToSaleRows)
   }
   return omieCall('/produtos/pedido/', 'ListarPedidos', param)
 }
@@ -268,10 +269,11 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
   const cliente = cliData ? cliData.nome   : (codCli ? `Cliente ${codCli}` : 'Anônimo')
   const bairro  = cliData ? cliData.bairro : 'N/I'
 
-  // Filtro de segurança: processar apenas pedidos com situação 'Autorizado'
-  // No Omiê, a situação pode vir em cabecalho.etapa ou cabecalho.cEtapa
-  const situacao = (cab.etapa || cab.cEtapa || '').toUpperCase()
-  if (situacao && situacao !== '20' && situacao !== 'AUTORIZADO') return []
+  // Filtro de segurança: processar apenas pedidos com situação 'Autorizado' (Etapa 20)
+  // No Omiê, a etapa pode vir em cabecalho.etapa ou cabecalho.cEtapa
+  const etapa = String(cab.etapa || cab.cEtapa || '')
+  // Etapa 20 = Autorizado (Faturamento)
+  if (etapa !== '20' && etapa.toUpperCase() !== 'AUTORIZADO') return []
 
   // Cálculo de proporção para rateio de frete e outras despesas (se houver no cabeçalho)
   const totalMercadoria = parseFloat(cab.valor_total_pedido || 0)
