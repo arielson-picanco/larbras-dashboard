@@ -228,6 +228,7 @@ async function fetchPedidosPage(page, dateFrom, dateTo, etapa) {
   if (dateFrom && dateTo) {
     param.filtrar_por_data_de  = formatDateBR(dateFrom)
     param.filtrar_por_data_ate = formatDateBR(dateTo)
+    param.filtrar_por_situacao = 'AUTORIZADO'
   }
   return omieCall('/produtos/pedido/', 'ListarPedidos', param)
 }
@@ -267,35 +268,48 @@ function pedidoToSaleRows(pedido, vendMap, cliMap, prodMap = {}) {
   const cliente = cliData ? cliData.nome   : (codCli ? `Cliente ${codCli}` : 'Anônimo')
   const bairro  = cliData ? cliData.bairro : 'N/I'
 
+  // Filtro de segurança: processar apenas pedidos com situação 'Autorizado'
+  // No Omiê, a situação pode vir em cabecalho.etapa ou cabecalho.cEtapa
+  const situacao = (cab.etapa || cab.cEtapa || '').toUpperCase()
+  if (situacao && situacao !== '20' && situacao !== 'AUTORIZADO') return []
+
+  // Cálculo de proporção para rateio de frete e outras despesas (se houver no cabeçalho)
+  const totalMercadoria = parseFloat(cab.valor_total_pedido || 0)
+  const freteTotal      = parseFloat(cab.valor_frete || 0)
+  const despesasTotal   = parseFloat(cab.valor_outras_despesas || 0)
+  const descontoTotal   = parseFloat(cab.valor_desconto || 0)
+
   const rows = []
   det.forEach((item, idx) => {
     const prod = item.produto || {}
+
+    // descricao confirmado no debug
     const produto    = (prod.descricao    || prod.cDescricao || 'Produto').trim() || 'Produto'
     const quantidade = Math.max(1, Math.round(parseFloat(prod.quantidade || prod.nQtdPedido || 1) || 1))
 
-    // Marca
-    const codProd         = String(prod.cCodProd || prod.codigo || prod.codigo_produto || '').trim()
-    const marcaDoCatalogo = codProd ? (prodMap[codProd] || '') : ''
-    const marcaDoPedido   = (prod.familia || '').trim()
-    const marca           = marcaDoCatalogo || marcaDoPedido || 'S/Marca'
+    // valor_total confirmado no debug (valor do item = qtd × unitário - desconto)
+    const valor = parseFloat(
+      prod.valor_total     ||
+      prod.valor_mercadoria ||
+      (prod.valor_unitario && prod.quantidade
+        ? parseFloat(prod.valor_unitario) * parseFloat(prod.quantidade)
+        : 0
+      ) || 0
+    )
 
-    // ── VALOR — FIX 2 ─────────────────────────────────────────────────────────
-    // valor_total  = valor líquido do item após todos os descontos individuais.
-    // valor_mercadoria = valor bruto antes do desconto.
-    // Usar valor_total diretamente elimina a necessidade de qualquer cálculo
-    // proporcional de desconto do cabeçalho — o Omiê já fez esse cálculo.
-    const valor = Math.round(
-      parseFloat(prod.valor_total || prod.valor_mercadoria || 0) * 100
-    ) / 100
-    // ─────────────────────────────────────────────────────────────────────────
     if (valor <= 0) return
 
     rows.push({
-      omie_id:  `${numeroPedido}-${idx}`,
-      data:     data.toISOString().slice(0, 10),
-      valor,
-      cliente, produto, marca, vendedor, bairro, quantidade,
-      source:   'omie',
+      omie_id:    `${numeroPedido}-${idx}`,
+      data:       data.toISOString().slice(0, 10),
+      valor:      Math.round(valor * 100) / 100,
+      cliente,
+      produto,
+      marca,
+      vendedor,
+      bairro,
+      quantidade,
+      source:     'omie',
     })
   })
 
