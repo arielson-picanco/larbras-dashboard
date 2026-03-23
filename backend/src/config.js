@@ -27,8 +27,17 @@ module.exports = {
     appKey:          process.env.OMIE_APP_KEY  || '',
     appSecret:       process.env.OMIE_APP_SECRET || '',
     baseUrl:         'https://app.omie.com.br/api/v1',
-    // Número de registros por página (máx. recomendado pelo Omiê)
     pageSize:        50,
+
+    // Etapas do pedido_venda_produto que representam pedidos FATURADOS.
+    // Padrão Omiê: '60' = Faturado (NF-e emitida), '70' = Entregue/Concluído.
+    //
+    // Se os seus códigos forem diferentes, defina no backend/.env:
+    //   OMIE_ETAPAS_FATURADO=60,70
+    //
+    // Para descobrir seus códigos: use "Testar Conexão" no painel Omiê do
+    // dashboard e inspecione o campo "etapas_encontradas" no resultado.
+    etapasFaturado:  process.env.OMIE_ETAPAS_FATURADO || '60,70',
   },
 
   ai: {

@@ -1,7 +1,5 @@
 // ============================================================
-// MÓDULO 1 — Store Zustand
-// Substitui todas as variáveis globais do HTML original:
-// ALL_ROWS, ROWS, D, WB_STATE, CURRENT_PERIOD, COL_DEFS
+// MÓDULO 1 — Store Zustand  (v5 — refreshFromAPI)
 // ============================================================
 
 import { create } from 'zustand'
@@ -15,7 +13,6 @@ import type {
 import { buildDerived } from '@/services/analytics'
 import { applyFilters }  from '@/services/filters'
 
-// ── Default column definitions (mirrors original COL_DEFS) ──────────────────
 export const DEFAULT_COL_DEFS: ColumnDef[] = [
   { key: 'data',     label: 'Data',         active: true, mapTo: '', alts: ['data','date','datavenda','datapedido','dtvenda'],                                                       _builtin: true  },
   { key: 'valor',    label: 'Valor (R$)',    active: true, mapTo: '', alts: ['totalmercadoria','totalvenda','totalpedido','faturamento','receita','valor','total','preco','price'],    _builtin: true  },
@@ -27,7 +24,6 @@ export const DEFAULT_COL_DEFS: ColumnDef[] = [
   { key: 'qtd',      label: 'Quantidade',    active: true, mapTo: '', alts: ['qtd','quantidade','quantity','qty','volume','unidades'],                                               _builtin: true  },
 ]
 
-// ── Default filters ──────────────────────────────────────────────────────────
 const DEFAULT_FILTERS: FilterState = {
   dateRange: { from: null, to: null },
   vendedor:  '',
@@ -40,25 +36,17 @@ const DEFAULT_FILTERS: FilterState = {
 
 // ── Store interface ──────────────────────────────────────────────────────────
 interface DashboardState {
-  // ── Data ──────────────────────────────────────────
   allRows:      SaleRow[]
   filteredRows: SaleRow[]
   derived:      DerivedData | null
-
-  // ── Filters ───────────────────────────────────────
   filters:      FilterState
-
-  // ── Column mapping ────────────────────────────────
   columnDefs:   ColumnDef[]
-
-  // ── UI state ──────────────────────────────────────
   activeTab:    string
   isLoading:    boolean
-  lastImport:   string | null    // ISO string (serializable)
+  lastImport:   string | null
   theme:        'dark' | 'light'
   importModalOpen: boolean
 
-  // ── Actions ───────────────────────────────────────
   setAllRows:      (rows: SaleRow[]) => void
   setFilters:      (filters: Partial<FilterState>) => void
   resetFilters:    () => void
@@ -70,7 +58,10 @@ interface DashboardState {
   closeImportModal:() => void
   clearData:       () => void
 
-  // ── Derived helpers ───────────────────────────────
+  // NOVO: recarrega dados da API/IndexedDB sem precisar recarregar a página.
+  // Chamado pelo OmieSync após sync completar com sucesso.
+  refreshFromAPI:  () => Promise<void>
+
   getUniqueValues: (field: keyof SaleRow) => string[]
 }
 
@@ -89,7 +80,6 @@ export const useDashboardStore = create<DashboardState>()(
       theme:           'dark',
       importModalOpen: false,
 
-      // ── Load data ──────────────────────────────────
       setAllRows: (rows) => {
         const filtered = applyFilters(rows, DEFAULT_FILTERS)
         set({
@@ -100,7 +90,6 @@ export const useDashboardStore = create<DashboardState>()(
         })
       },
 
-      // ── Apply filters ──────────────────────────────
       setFilters: (partial) => {
         const newFilters = { ...get().filters, ...partial }
         const filtered   = applyFilters(get().allRows, newFilters)
@@ -141,7 +130,37 @@ export const useDashboardStore = create<DashboardState>()(
           filters:      DEFAULT_FILTERS,
         }),
 
-      // ── Helpers ────────────────────────────────────
+      // ── Recarrega dados da fonte configurada (API ou IndexedDB) ──────────
+      // Mantém os filtros ativos para não perder seleção do usuário.
+      refreshFromAPI: async () => {
+        const USE_API = import.meta.env.VITE_USE_API === 'true'
+        set({ isLoading: true })
+        try {
+          let rows: SaleRow[] = []
+          if (USE_API) {
+            const { fetchSalesData } = await import('../services/api')
+            rows = await fetchSalesData()
+          } else {
+            const { loadRows } = await import('../services/db')
+            rows = await loadRows()
+          }
+          if (rows.length) {
+            const currentFilters = get().filters
+            const filtered = applyFilters(rows, currentFilters)
+            set({
+              allRows:      rows,
+              filteredRows: filtered,
+              derived:      buildDerived(filtered),
+              lastImport:   new Date().toISOString(),
+            })
+          }
+        } catch (err) {
+          console.error('[Store] refreshFromAPI erro:', err)
+        } finally {
+          set({ isLoading: false })
+        }
+      },
+
       getUniqueValues: (field) => {
         const values = get().allRows.map((r) => String(r[field] ?? ''))
         return [...new Set(values)].filter(Boolean).sort()
@@ -150,7 +169,6 @@ export const useDashboardStore = create<DashboardState>()(
     {
       name: 'larbras-v1',
       storage: createJSONStorage(() => localStorage),
-      // Persist only config, not data (IndexedDB handles data)
       partialize: (state) => ({
         columnDefs: state.columnDefs,
         filters:    state.filters,
